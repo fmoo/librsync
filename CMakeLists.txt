@@ -17,6 +17,7 @@
 project(librsync)
 cmake_minimum_required(VERSION 2.6)
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(LIBRSYNC_MAJOR_VERSION 1)
 set(LIBRSYNC_MINOR_VERSION 0)
