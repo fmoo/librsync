@@ -15,9 +15,12 @@
 
 
 project(librsync)
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.6)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+INCLUDE(CMakeDependentOption)
+include(GNUInstallDirs)
 
 set(LIBRSYNC_MAJOR_VERSION 1)
 set(LIBRSYNC_MINOR_VERSION 0)
@@ -131,16 +134,22 @@ if(APPLE)
   endif()
 endif()
 
+option(BUILD_SHARED_LIBS "Build librsync as a shared library." ON)
+
 site_name(SITE_NAME)
 
 message (STATUS "PROJECT_NAME  = ${PROJECT_NAME}")
 message (STATUS "SITE_NAME  = ${SITE_NAME}")
 
 # Find POPT
-find_package(POPT REQUIRED)
-if ( POPT_FOUND )
+find_package(POPT)
+if (POPT_FOUND)
+  message (STATUS "POPT_INCLUDE_DIRS  = ${POPT_INCLUDE_DIRS}")
+  message (STATUS "POPT_LIBRARIES = ${POPT_LIBRARIES}")
   include_directories(${POPT_INCLUDE_DIRS})
-endif ( POPT_FOUND )
+endif (POPT_FOUND)
+
+cmake_dependent_option(BUILD_RDIFF "Whether or not to build rdiff executable" ON "POPT_FOUND" OFF)
 
 # Find BZIP
 find_package (BZip2 REQUIRED)
@@ -187,14 +196,15 @@ add_executable(isprefix_test tests/isprefix_test.c src/isprefix.c)
 
 add_test(NAME isprefix_test COMMAND isprefix_test)
 
-add_test(NAME Help COMMAND help.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-add_test(NAME Mutate COMMAND mutate.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-add_test(NAME Signature COMMAND signature.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-add_test(NAME Sources COMMAND sources.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-add_test(NAME Triple COMMAND triple.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-add_test(NAME Delta COMMAND delta.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-add_test(NAME Changes COMMAND changes.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-
+if (BUILD_RDIFF)
+  add_test(NAME Help COMMAND help.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+  add_test(NAME Mutate COMMAND mutate.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+  add_test(NAME Signature COMMAND signature.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+  add_test(NAME Sources COMMAND sources.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+  add_test(NAME Triple COMMAND triple.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+  add_test(NAME Delta COMMAND delta.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+  add_test(NAME Changes COMMAND changes.test ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+endif (BUILD_RDIFF)
 
 enable_testing()
 
@@ -249,7 +259,15 @@ set(rsync_LIB_SRCS
     src/whole.c
     src/blake2b-ref.c)
 
-add_library(rsync SHARED ${rsync_LIB_SRCS})
+
+# Set properties/options for shared vs static library.
+if (BUILD_SHARED_LIBS)
+  add_library(rsync SHARED ${rsync_LIB_SRCS})
+  set_target_properties(rsync PROPERTIES C_VISIBILITY_PRESET hidden)
+else (BUILD_SHARED_LIBS)
+  add_library(rsync STATIC ${rsync_LIB_SRCS})
+  target_compile_options(rsync PUBLIC -DLIBRSYNC_STATIC_DEFINE)
+endif (BUILD_SHARED_LIBS)
 
 target_link_libraries(rsync
    ${BZIP2_LIBRARIES}
@@ -263,15 +281,17 @@ install(TARGETS rsync ${INSTALL_TARGETS_DEFAULT_ARGS} DESTINATION lib)
 
 ########### next target ###############
 
-set(rdiff_SRCS
-    src/rdiff.c
-    src/isprefix.c)
+if (BUILD_RDIFF)
+  set(rdiff_SRCS
+      src/rdiff.c
+      src/isprefix.c)
 
-add_executable(rdiff ${rdiff_SRCS})
+  add_executable(rdiff ${rdiff_SRCS})
 
-target_link_libraries(rdiff rsync ${POPT_LIBRARIES})
+  target_link_libraries(rdiff rsync ${POPT_LIBRARIES})
 
-install(TARGETS rdiff ${INSTALL_TARGETS_DEFAULT_ARGS} DESTINATION bin)
+  install(TARGETS rdiff ${INSTALL_TARGETS_DEFAULT_ARGS} DESTINATION bin)
+endif (BUILD_RDIFF)
 
 
 ########### install files ###############
